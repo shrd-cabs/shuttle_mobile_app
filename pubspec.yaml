@@ -44,6 +44,11 @@ dependencies:
   # Local Storage
   shared_preferences: ^2.5.3
 
+  razorpay_flutter: 1.4.1
+
+#dependency_overrides:
+#  fluttertoast: 8.2.12
+
 # ===============================================================
 # Development Dependencies
 # ===============================================================

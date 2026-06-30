@@ -5,24 +5,20 @@
 //
 // PURPOSE
 // ---------------------------------------------------------------
-// Displays:
-//
-// 1. Email Input
-// 2. Password Input
-// 3. Login Button
-// 4. Forgot Password
+// Displays email, password, login button and forgot password.
 //
 // NOTES
 // ---------------------------------------------------------------
 // - Uses AuthService
-// - Matches web application design
-// - Navigates to Dashboard after successful login
+// - Saves session using StorageService
+// - Navigates to MainContentScreen after successful login
 // ===============================================================
 
 import 'package:flutter/material.dart';
 
-//import '../../dashboard/dashboard_screen.dart';
+import '../../main/main_content_screen.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/storage_service.dart';
 
 class LoginFormWidget extends StatefulWidget {
   const LoginFormWidget({super.key});
@@ -33,31 +29,22 @@ class LoginFormWidget extends StatefulWidget {
 
 class _LoginFormWidgetState extends State<LoginFormWidget> {
   final emailController = TextEditingController();
-
   final passwordController = TextEditingController();
-
   final authService = AuthService();
+  final storageService = StorageService();
 
   bool isLoading = false;
 
-  // ===========================================================
-  // Login
-  // ===========================================================
-
   Future<void> login() async {
     final email = emailController.text.trim();
-
     final password = passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
       showMessage('Enter email and password');
-
       return;
     }
 
-    setState(() {
-      isLoading = true;
-    });
+    setState(() => isLoading = true);
 
     final result = await authService.login(
       email: email,
@@ -66,66 +53,63 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
 
     if (!mounted) return;
 
-    setState(() {
-      isLoading = false;
-    });
+    setState(() => isLoading = false);
 
-    if (result['success'] == true) {
+    if (result['success'] == true && result['user'] != null) {
+      await storageService.saveCurrentUser(
+        Map<String, dynamic>.from(result['user']),
+      );
+
       showMessage('Welcome ${result['user']['name']}');
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const MainContentScreen(),
+        ),
+      );
     } else {
-      showMessage('Invalid email or password');
+      showMessage(result['error'] ?? 'Invalid email or password');
     }
   }
-
-  // ===========================================================
-  // Forgot Password
-  // ===========================================================
 
   Future<void> forgotPassword() async {
     final email = emailController.text.trim();
 
     if (email.isEmpty) {
       showMessage('Please enter your email first');
-
       return;
     }
 
-    setState(() {
-      isLoading = true;
-    });
+    setState(() => isLoading = true);
 
     final result = await authService.forgotPassword(email);
 
     if (!mounted) return;
 
-    setState(() {
-      isLoading = false;
-    });
+    setState(() => isLoading = false);
 
     if (result['success'] == true) {
       showMessage('Password sent to registered email');
     } else {
-      showMessage(
-        result['error'] ?? 'Something went wrong',
-      );
+      showMessage(result['error'] ?? 'Something went wrong');
     }
   }
 
-  // ===========================================================
-  // Snackbar Helper
-  // ===========================================================
-
   void showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
+      SnackBar(content: Text(message)),
     );
   }
 
-  // ===========================================================
-  // UI
-  // ===========================================================
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,9 +132,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
             ),
           ),
         ),
-
         const SizedBox(height: 18),
-
         TextField(
           controller: passwordController,
           obscureText: true,
@@ -168,9 +150,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
             ),
           ),
         ),
-
         const SizedBox(height: 24),
-
         SizedBox(
           width: double.infinity,
           height: 55,
@@ -187,9 +167,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
                 ? const SizedBox(
                     height: 22,
                     width: 22,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                    ),
+                    child: CircularProgressIndicator(color: Colors.white),
                   )
                 : const Text(
                     'Login',
@@ -200,9 +178,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
                   ),
           ),
         ),
-
         const SizedBox(height: 16),
-
         GestureDetector(
           onTap: forgotPassword,
           child: const Text(

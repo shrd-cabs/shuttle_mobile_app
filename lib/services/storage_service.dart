@@ -1,32 +1,43 @@
+// ===============================================================
+// storage_service.dart
+// ---------------------------------------------------------------
+// Local Storage Service
+//
+// PURPOSE
+// ---------------------------------------------------------------
+// Stores and restores logged-in user session.
+// ===============================================================
+
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StorageService {
+  static const String currentUserKey = 'currentUser';
 
-  static Future<void> saveUser(String userData) async {
-
+  Future<void> saveCurrentUser(Map<String, dynamic> user) async {
     final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setString(
-      'currentUser',
-      userData,
-    );
+    await prefs.setString(currentUserKey, jsonEncode(user));
   }
 
-  static Future<String?> getUser() async {
-
+  Future<Map<String, dynamic>?> getCurrentUser() async {
     final prefs = await SharedPreferences.getInstance();
+    final userString = prefs.getString(currentUserKey);
 
-    return prefs.getString(
-      'currentUser',
-    );
+    if (userString == null || userString.isEmpty) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(jsonDecode(userString));
   }
 
-  static Future<void> removeUser() async {
-
+  Future<void> clearCurrentUser() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(currentUserKey);
+  }
 
-    await prefs.remove(
-      'currentUser',
-    );
+  Future<bool> isLoggedIn() async {
+    final user = await getCurrentUser();
+    return user != null;
   }
 }
