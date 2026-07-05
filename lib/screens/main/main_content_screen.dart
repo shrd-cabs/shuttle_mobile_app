@@ -5,17 +5,17 @@
 //
 // PURPOSE
 // ---------------------------------------------------------------
-// Displays the main app area after successful login:
-// 1. Header
-// 2. Navigation tabs
-// 3. Book Seat
-// 4. My Trips
-// 5. Travel Pass
-// 6. Live Tracking
+// Displays the main app area after successful login.
 // ===============================================================
 
 import 'package:flutter/material.dart';
+
+import '../../services/storage_service.dart';
+import '../../services/wallet_service.dart';
+import '../auth/auth_screen.dart';
 import '../booking/booking_screen.dart';
+import '../my_trips/my_trips_screen.dart';
+import '../wallet/wallet_dialog.dart';
 
 class MainContentScreen extends StatefulWidget {
   const MainContentScreen({super.key});
@@ -25,7 +25,11 @@ class MainContentScreen extends StatefulWidget {
 }
 
 class _MainContentScreenState extends State<MainContentScreen> {
+  final storageService = StorageService();
+  final walletService = WalletService();
+
   int selectedTabIndex = 0;
+  double walletBalance = 0;
 
   final List<String> tabs = [
     'Book Seat',
@@ -33,6 +37,66 @@ class _MainContentScreenState extends State<MainContentScreen> {
     'Travel Pass',
     'Live Tracking',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    loadUserWallet();
+  }
+
+  Future<void> loadUserWallet() async {
+    final user = await storageService.getCurrentUser();
+
+    if (user == null) return;
+
+    final email = '${user['email'] ?? ''}';
+
+    if (email.isEmpty) return;
+
+    try {
+      final balance = await walletService.getWalletBalance(
+        email: email,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        walletBalance = balance;
+      });
+    } catch (_) {
+      setState(() {
+        walletBalance =
+            double.tryParse('${user['wallet_balance'] ?? 0}') ?? 0;
+      });
+    }
+  }
+
+  Future<void> logout() async {
+    await storageService.clearCurrentUser();
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AuthScreen(),
+      ),
+      (route) => false,
+    );
+  }
+
+  Future<void> openWallet() async {
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return WalletDialog(
+          onWalletUpdated: loadUserWallet,
+        );
+      },
+    );
+
+    await loadUserWallet();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,22 +107,41 @@ class _MainContentScreenState extends State<MainContentScreen> {
             _buildHeader(),
             _buildTabs(),
             Expanded(
-                child: selectedTabIndex == 0
-                    ? const BookingScreen()
-                    : Center(
-                        child: Text(
-                            '${tabs[selectedTabIndex]} Screen',
-                            style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            ),
-                        ),
-                        ),
-                ),
+              child: _buildSelectedScreen(),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSelectedScreen() {
+    switch (selectedTabIndex) {
+      case 0:
+        return const BookingScreen();
+
+      case 1:
+        return const MyTripsScreen();
+
+      case 2:
+        return const Center(
+          child: Text(
+            'Travel Pass Screen',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+        );
+
+      case 3:
+        return const Center(
+          child: Text(
+            'Live Tracking Screen',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+        );
+
+      default:
+        return const SizedBox.shrink();
+    }
   }
 
   Widget _buildHeader() {
@@ -84,18 +167,21 @@ class _MainContentScreenState extends State<MainContentScreen> {
           ),
           const Text(
             'Shri Radhey Travel Services',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.white, fontSize: 14),
           ),
           const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _chip('💰 ₹0'),
+              GestureDetector(
+                onTap: openWallet,
+                child: _chip('💰 ₹${walletBalance.toStringAsFixed(0)}'),
+              ),
               const SizedBox(width: 12),
-              _chip('Logout'),
+              GestureDetector(
+                onTap: logout,
+                child: _chip('Logout'),
+              ),
             ],
           ),
         ],
@@ -131,9 +217,7 @@ class _MainContentScreenState extends State<MainContentScreen> {
         return Expanded(
           child: GestureDetector(
             onTap: () {
-              setState(() {
-                selectedTabIndex = index;
-              });
+              setState(() => selectedTabIndex = index);
             },
             child: Container(
               height: 52,

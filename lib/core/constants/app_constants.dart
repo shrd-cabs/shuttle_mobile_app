@@ -29,41 +29,35 @@ class AppConstants {
   // GOOGLE APPS SCRIPT CONFIG - PRODUCTION
   // =============================================================
 
-  static const String scriptId =
-      'AKfycbwIZE9kQ5ONEJB8ejsHknLWyllNL2pQAR8Q2lioo7KG8c4D2CW5LCO5JwZOF_rK7Ztq';
+  static const String scriptId = 'AKfycbwIZE9kQ5ONEJB8ejsHknLWyllNL2pQAR8Q2lioo7KG8c4D2CW5LCO5JwZOF_rK7Ztq';
 
-  static const String spreadsheetId =
-      '1AFyDz6GsimoI8CTXJYMI81W8VhyZDtRC6xLvT8_tbJE';
+  static const String spreadsheetId = '1AFyDz6GsimoI8CTXJYMI81W8VhyZDtRC6xLvT8_tbJE';
 
   // =============================================================
   // GOOGLE APPS SCRIPT CONFIG - STAGING
   // =============================================================
 
-  // static const String scriptId =
-  //     'AKfycby-ipJy8giLt4C-jO-HAryu8swwVnseJo7Y0D7uF0Bn2ExlCrJgsbiSnEcthNalj6oXnw';
+  // static const String scriptId = 'AKfycby-ipJy8giLt4C-jO-HAryu8swwVnseJo7Y0D7uF0Bn2ExlCrJgsbiSnEcthNalj6oXnw';
 
-  // static const String spreadsheetId =
-  //     '1-mF84tkEqDumCUKXUxybqRf8ewYrXCkcqq4gE0-c3rg';
+  // static const String spreadsheetId = '1-mF84tkEqDumCUKXUxybqRf8ewYrXCkcqq4gE0-c3rg';
 
   // =============================================================
   // API ENDPOINT - PRODUCTION
   // =============================================================
 
-  static const String apiUrl =
-      'https://script.google.com/macros/s/AKfycbwIZE9kQ5ONEJB8ejsHknLWyllNL2pQAR8Q2lioo7KG8c4D2CW5LCO5JwZOF_rK7Ztq/exec';
+  static const String apiUrl =  'https://script.google.com/macros/s/AKfycbwIZE9kQ5ONEJB8ejsHknLWyllNL2pQAR8Q2lioo7KG8c4D2CW5LCO5JwZOF_rK7Ztq/exec';
 
   // =============================================================
   // API ENDPOINT - STAGING
   // =============================================================
 
-  // static const String apiUrl =
-  //     'https://script.google.com/macros/s/AKfycby-ipJy8giLt4C-jO-HAryu8swwVnseJo7Y0D7uF0Bn2ExlCrJgsbiSnEcthNalj6oXnw/exec';
+  // static const String apiUrl = 'https://script.google.com/macros/s/AKfycby-ipJy8giLt4C-jO-HAryu8swwVnseJo7Y0D7uF0Bn2ExlCrJgsbiSnEcthNalj6oXnw/exec';
 
   // =============================================================
   // RAZORPAY CONFIG - TEST
   // =============================================================
 
-   //static const String razorpayKeyId = 'rzp_test_SToJcqhAImfHOY';
+  // static const String razorpayKeyId = 'rzp_test_SToJcqhAImfHOY';
 
   // =============================================================
   // RAZORPAY CONFIG - LIVE
