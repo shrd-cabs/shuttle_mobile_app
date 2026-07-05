@@ -23,7 +23,11 @@ class ShuttleApp extends StatelessWidget {
   const ShuttleApp({super.key});
 
   Future<bool> checkLoginStatus() async {
-    return StorageService().isLoggedIn();
+    try {
+      return await StorageService().isLoggedIn();
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
@@ -35,7 +39,7 @@ class ShuttleApp extends StatelessWidget {
       home: FutureBuilder<bool>(
         future: checkLoginStatus(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(
                 child: CircularProgressIndicator(),
@@ -43,9 +47,11 @@ class ShuttleApp extends StatelessWidget {
             );
           }
 
-          return snapshot.data == true
-              ? const MainContentScreen()
-              : const AuthScreen();
+          if (snapshot.hasError || snapshot.data != true) {
+            return const AuthScreen();
+          }
+
+          return const MainContentScreen();
         },
       ),
     );

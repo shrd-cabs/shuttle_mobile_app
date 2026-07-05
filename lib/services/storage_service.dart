@@ -24,11 +24,23 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     final userString = prefs.getString(currentUserKey);
 
-    if (userString == null || userString.isEmpty) {
+    if (userString == null || userString.trim().isEmpty) {
       return null;
     }
 
-    return Map<String, dynamic>.from(jsonDecode(userString));
+    try {
+      final decoded = jsonDecode(userString);
+
+      if (decoded is! Map<String, dynamic>) {
+        await prefs.remove(currentUserKey);
+        return null;
+      }
+
+      return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      await prefs.remove(currentUserKey);
+      return null;
+    }
   }
 
   Future<void> clearCurrentUser() async {

@@ -47,6 +47,7 @@ class _BookingScreenState extends State<BookingScreen> {
   bool isPreparingPayment = false;
   bool isLoadingStops = true;
   bool isSearching = false;
+  bool isRazorpayReady = false;
 
   String tripType = 'oneway';
   int passengers = 1;
@@ -67,31 +68,42 @@ class _BookingScreenState extends State<BookingScreen> {
   @override
   void initState() {
     super.initState();
-
-    razorpay = Razorpay();
-
-    razorpay.on(
-      Razorpay.EVENT_PAYMENT_SUCCESS,
-      handlePaymentSuccess,
-    );
-
-    razorpay.on(
-      Razorpay.EVENT_PAYMENT_ERROR,
-      handlePaymentError,
-    );
-
-    razorpay.on(
-      Razorpay.EVENT_EXTERNAL_WALLET,
-      handleExternalWallet,
-    );
-
+    initializeRazorpay();
     loadStops();
   }
 
   @override
   void dispose() {
-    razorpay.clear();
+    if (isRazorpayReady) {
+      razorpay.clear();
+    }
     super.dispose();
+  }
+
+  void initializeRazorpay() {
+    try {
+      razorpay = Razorpay();
+
+      razorpay.on(
+        Razorpay.EVENT_PAYMENT_SUCCESS,
+        handlePaymentSuccess,
+      );
+
+      razorpay.on(
+        Razorpay.EVENT_PAYMENT_ERROR,
+        handlePaymentError,
+      );
+
+      razorpay.on(
+        Razorpay.EVENT_EXTERNAL_WALLET,
+        handleExternalWallet,
+      );
+
+      isRazorpayReady = true;
+    } catch (error) {
+      isRazorpayReady = false;
+      debugPrint('Razorpay initialization failed: $error');
+    }
   }
 
   Future<void> loadStops() async {
@@ -360,7 +372,20 @@ class _BookingScreenState extends State<BookingScreen> {
 
                             setState(() => isPreparingPayment = false);
 
-                            razorpay.open(options);
+                            if (!isRazorpayReady) {
+                              showMessage(
+                                'Payment gateway is unavailable right now. Please try again later.',
+                              );
+                              return;
+                            }
+
+                            try {
+                              razorpay.open(options);
+                            } catch (error) {
+                              showMessage(
+                                'Unable to start payment right now. Please try again.',
+                              );
+                            }
                           } catch (error) {
                             if (!mounted) return;
 
