@@ -16,6 +16,7 @@ import '../auth/auth_screen.dart';
 import '../booking/booking_screen.dart';
 import '../my_trips/my_trips_screen.dart';
 import '../wallet/wallet_dialog.dart';
+import '../travel_pass/travel_pass_screen.dart';
 
 class MainContentScreen extends StatefulWidget {
   const MainContentScreen({super.key});
@@ -124,11 +125,8 @@ class _MainContentScreenState extends State<MainContentScreen> {
         return const MyTripsScreen();
 
       case 2:
-        return const Center(
-          child: Text(
-            'Travel Pass Screen',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
+        return TravelPassScreen(
+          onWalletUpdated: loadUserWallet,
         );
 
       case 3:
