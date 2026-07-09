@@ -17,6 +17,7 @@ import '../booking/booking_screen.dart';
 import '../my_trips/my_trips_screen.dart';
 import '../wallet/wallet_dialog.dart';
 import '../travel_pass/travel_pass_screen.dart';
+import '../live_tracking/live_tracking_screen.dart';
 
 class MainContentScreen extends StatefulWidget {
   const MainContentScreen({super.key});
@@ -130,12 +131,7 @@ class _MainContentScreenState extends State<MainContentScreen> {
         );
 
       case 3:
-        return const Center(
-          child: Text(
-            'Live Tracking Screen',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-        );
+        return const LiveTrackingScreen();
 
       default:
         return const SizedBox.shrink();

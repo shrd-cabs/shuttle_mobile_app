@@ -6,6 +6,7 @@
 // PURPOSE
 // ---------------------------------------------------------------
 // Handles payment preparation and booking hold creation.
+// Supports ONEWAY and ROUNDTRIP payment confirmation.
 // ===============================================================
 
 import 'dart:convert';
@@ -88,14 +89,19 @@ class PaymentService {
           passData['passDetails'] != null) {
         passApplied = true;
         passDetails = Map<String, dynamic>.from(passData['passDetails']);
+
         passDiscountAmount =
             double.tryParse('${passDetails['discount_amount'] ?? 0}') ?? 0;
+
         finalAmount =
             double.tryParse('${passDetails['final_amount'] ?? originalAmount}') ??
                 originalAmount;
       }
     } catch (_) {
       passApplied = false;
+      passDetails = null;
+      passDiscountAmount = 0;
+      finalAmount = originalAmount;
     }
 
     return PaymentSummaryModel(
@@ -126,42 +132,83 @@ class PaymentService {
     );
   }
 
+  String buildRoundTripLegQueryString({
+    required PaymentSummaryModel summary,
+  }) {
+    if (summary.booking.tripType != 'ROUNDTRIP') {
+      return '';
+    }
+
+    final onward = summary.booking.onwardRoute!;
+    final ret = summary.booking.returnRoute!;
+
+    final onwardOriginal = onward.totalAmount;
+    final returnOriginal = ret.totalAmount;
+    final combinedOriginal = onwardOriginal + returnOriginal;
+    final combinedFinal = summary.finalAmount;
+
+    double onwardFinal = onwardOriginal;
+    double returnFinal = returnOriginal;
+
+    if (summary.passApplied &&
+        combinedOriginal > 0 &&
+        combinedFinal < combinedOriginal) {
+      onwardFinal = ((onwardOriginal / combinedOriginal) * combinedFinal).roundToDouble();
+      returnFinal = combinedFinal - onwardFinal;
+    }
+
+    return '&onward_original_total_amount=${Uri.encodeComponent('$onwardOriginal')}'
+        '&onward_final_total_amount=${Uri.encodeComponent('$onwardFinal')}'
+        '&return_original_total_amount=${Uri.encodeComponent('$returnOriginal')}'
+        '&return_final_total_amount=${Uri.encodeComponent('$returnFinal')}';
+  }
+
+  String buildPassQueryString({
+    required PaymentSummaryModel summary,
+  }) {
+    return '&original_total_amount=${Uri.encodeComponent('${summary.originalAmount}')}'
+        '&pass_applied=${summary.passApplied ? "YES" : "NO"}'
+        '&user_pass_id=${Uri.encodeComponent('${summary.passDetails?['user_pass_id'] ?? "NA"}')}'
+        '&pass_type_id=${Uri.encodeComponent('${summary.passDetails?['pass_type_id'] ?? "NA"}')}'
+        '&pass_name=${Uri.encodeComponent('${summary.passDetails?['pass_name'] ?? "NA"}')}'
+        '&pass_discount_percent=${Uri.encodeComponent('${summary.passDetails?['discount_percent'] ?? 0}')}'
+        '&pass_discount_amount=${Uri.encodeComponent('${summary.passDiscountAmount}')}'
+        '&final_total_amount=${Uri.encodeComponent('${summary.finalAmount}')}';
+  }
+
   Future<Map<String, dynamic>> processWalletBookingPayment({
     required List<String> bookingIds,
     required String tripType,
     required String email,
     required double amount,
     required PaymentSummaryModel summary,
-    }) async {
-    String url =
-        '${AppConstants.apiUrl}'
-        '?action=processWalletBookingPayment'
-        '&booking_ids=${Uri.encodeComponent(bookingIds.join(","))}'
-        '&trip_type=${Uri.encodeComponent(tripType)}'
-        '&email=${Uri.encodeComponent(email)}'
-        '&amount=$amount'
-        '&original_total_amount=${summary.originalAmount}'
-        '&pass_applied=${summary.passApplied ? "YES" : "NO"}'
-        '&user_pass_id=${summary.passDetails?['user_pass_id'] ?? "NA"}'
-        '&pass_type_id=${summary.passDetails?['pass_type_id'] ?? "NA"}'
-        '&pass_name=${summary.passDetails?['pass_name'] ?? "NA"}'
-        '&pass_discount_percent=${summary.passDetails?['discount_percent'] ?? 0}'
-        '&pass_discount_amount=${summary.passDiscountAmount}'
-        '&final_total_amount=${summary.finalAmount}';
+  }) async {
+    final url = Uri.parse(
+      '${AppConstants.apiUrl}'
+      '?action=processWalletBookingPayment'
+      '&booking_ids=${Uri.encodeComponent(bookingIds.join(","))}'
+      '&trip_type=${Uri.encodeComponent(tripType)}'
+      '&email=${Uri.encodeComponent(email)}'
+      '&amount=${Uri.encodeComponent('$amount')}'
+      '${buildPassQueryString(summary: summary)}'
+      '${buildRoundTripLegQueryString(summary: summary)}',
+    );
 
-    final response = await http.get(Uri.parse(url));
-
+    final response = await http.get(url);
     final data = jsonDecode(response.body);
 
-    return Map<String, dynamic>.from(data);
+    if (data['success'] != true) {
+      throw Exception(data['error'] ?? 'Wallet payment failed');
     }
+
+    return Map<String, dynamic>.from(data);
+  }
 
   Future<List<String>> createOneWayHoldBooking({
     required SelectedBookingModel booking,
     required Map<String, dynamic> user,
   }) async {
     final route = booking.oneWayRoute!;
-
     final farePerSeat = route.totalAmount / booking.pax;
 
     final url = Uri.parse(
@@ -269,58 +316,54 @@ class PaymentService {
 
   Future<Map<String, dynamic>> createOrder({
     required double amount,
-    }) async {
+  }) async {
     final url = Uri.parse(
-        '${AppConstants.apiUrl}'
-        '?action=createOrder'
-        '&amount=${(amount * 100).round()}'
+      '${AppConstants.apiUrl}'
+      '?action=createOrder'
+      '&amount=${(amount * 100).round()}',
     );
 
     final response = await http.get(url);
     final data = jsonDecode(response.body);
 
     if (data['success'] != true) {
-        throw Exception(data['error'] ?? 'Failed to create Razorpay order');
-        }
-    return Map<String, dynamic>.from(data);
+      throw Exception(data['error'] ?? 'Failed to create Razorpay order');
     }
 
-    Future<Map<String, dynamic>> confirmBooking({
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Map<String, dynamic>> confirmBooking({
     required List<String> bookingIds,
     required String tripType,
     required String razorpayOrderId,
     required String razorpayPaymentId,
     required String razorpaySignature,
     required PaymentSummaryModel summary,
-    }) async {
+  }) async {
     final url = Uri.parse(
-        '${AppConstants.apiUrl}'
-        '?action=confirmBooking'
-        '&booking_ids=${Uri.encodeComponent(bookingIds.join(","))}'
-        '&trip_type=${Uri.encodeComponent(tripType)}'
-        '&razorpay_order_id=${Uri.encodeComponent(razorpayOrderId)}'
-        '&razorpay_payment_id=${Uri.encodeComponent(razorpayPaymentId)}'
-        '&razorpay_signature=${Uri.encodeComponent(razorpaySignature)}'
-        '&original_total_amount=${summary.originalAmount}'
-        '&pass_applied=${summary.passApplied ? "YES" : "NO"}'
-        '&user_pass_id=${summary.passDetails?['user_pass_id'] ?? "NA"}'
-        '&pass_type_id=${summary.passDetails?['pass_type_id'] ?? "NA"}'
-        '&pass_name=${summary.passDetails?['pass_name'] ?? "NA"}'
-        '&pass_discount_percent=${summary.passDetails?['discount_percent'] ?? 0}'
-        '&pass_discount_amount=${summary.passDiscountAmount}'
-        '&final_total_amount=${summary.finalAmount}',
+      '${AppConstants.apiUrl}'
+      '?action=confirmBooking'
+      '&booking_ids=${Uri.encodeComponent(bookingIds.join(","))}'
+      '&trip_type=${Uri.encodeComponent(tripType)}'
+      '&razorpay_order_id=${Uri.encodeComponent(razorpayOrderId)}'
+      '&razorpay_payment_id=${Uri.encodeComponent(razorpayPaymentId)}'
+      '&razorpay_signature=${Uri.encodeComponent(razorpaySignature)}'
+      '${buildPassQueryString(summary: summary)}'
+      '${buildRoundTripLegQueryString(summary: summary)}',
     );
 
     final response = await http.get(url);
     final data = jsonDecode(response.body);
+
     if (data['success'] != true) {
-        throw Exception(data['error'] ?? 'Booking confirmation failed');
+      throw Exception(data['error'] ?? 'Booking confirmation failed');
     }
 
     return Map<String, dynamic>.from(data);
-    }
+  }
 
-    Future<Map<String, dynamic>> verifyMixedBookingPayment({
+  Future<Map<String, dynamic>> verifyMixedBookingPayment({
     required List<String> bookingIds,
     required String tripType,
     required String email,
@@ -330,34 +373,29 @@ class PaymentService {
     required String razorpayPaymentId,
     required String razorpaySignature,
     required PaymentSummaryModel summary,
-    }) async {
+  }) async {
     final url = Uri.parse(
-        '${AppConstants.apiUrl}'
-        '?action=verifyMixedBookingPayment'
-        '&booking_ids=${Uri.encodeComponent(bookingIds.join(","))}'
-        '&trip_type=${Uri.encodeComponent(tripType)}'
-        '&email=${Uri.encodeComponent(email)}'
-        '&wallet_amount=$walletAmount'
-        '&online_amount=$onlineAmount'
-        '&razorpay_order_id=${Uri.encodeComponent(razorpayOrderId)}'
-        '&razorpay_payment_id=${Uri.encodeComponent(razorpayPaymentId)}'
-        '&razorpay_signature=${Uri.encodeComponent(razorpaySignature)}'
-        '&original_total_amount=${summary.originalAmount}'
-        '&pass_applied=${summary.passApplied ? "YES" : "NO"}'
-        '&user_pass_id=${summary.passDetails?['user_pass_id'] ?? "NA"}'
-        '&pass_type_id=${summary.passDetails?['pass_type_id'] ?? "NA"}'
-        '&pass_name=${summary.passDetails?['pass_name'] ?? "NA"}'
-        '&pass_discount_percent=${summary.passDetails?['discount_percent'] ?? 0}'
-        '&pass_discount_amount=${summary.passDiscountAmount}'
-        '&final_total_amount=${summary.finalAmount}',
+      '${AppConstants.apiUrl}'
+      '?action=verifyMixedBookingPayment'
+      '&booking_ids=${Uri.encodeComponent(bookingIds.join(","))}'
+      '&trip_type=${Uri.encodeComponent(tripType)}'
+      '&email=${Uri.encodeComponent(email)}'
+      '&wallet_amount=${Uri.encodeComponent('$walletAmount')}'
+      '&online_amount=${Uri.encodeComponent('$onlineAmount')}'
+      '&razorpay_order_id=${Uri.encodeComponent(razorpayOrderId)}'
+      '&razorpay_payment_id=${Uri.encodeComponent(razorpayPaymentId)}'
+      '&razorpay_signature=${Uri.encodeComponent(razorpaySignature)}'
+      '${buildPassQueryString(summary: summary)}'
+      '${buildRoundTripLegQueryString(summary: summary)}',
     );
 
     final response = await http.get(url);
     final data = jsonDecode(response.body);
 
     if (data['success'] != true) {
-        throw Exception(data['error'] ?? 'Mixed payment verification failed');
+      throw Exception(data['error'] ?? 'Mixed payment verification failed');
     }
+
     return Map<String, dynamic>.from(data);
-    }
+  }
 }
