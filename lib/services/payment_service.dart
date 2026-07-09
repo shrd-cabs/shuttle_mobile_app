@@ -398,4 +398,46 @@ class PaymentService {
 
     return Map<String, dynamic>.from(data);
   }
+
+  Future<Map<String, dynamic>> saveRazorpayOrderIdForBooking({
+    required List<String> bookingIds,
+    required String razorpayOrderId,
+  }) async {
+    final url = Uri.parse(
+      '${AppConstants.apiUrl}'
+      '?action=saveRazorpayOrderIdForBooking'
+      '&booking_ids=${Uri.encodeComponent(bookingIds.join(","))}'
+      '&razorpay_order_id=${Uri.encodeComponent(razorpayOrderId)}',
+    );
+
+    final response = await http.get(url);
+    final data = jsonDecode(response.body);
+
+    if (data['success'] != true) {
+      throw Exception(data['error'] ?? 'Failed to save Razorpay order ID');
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Map<String, dynamic>> releaseHoldBooking({
+    required List<String> bookingIds,
+    required String tripType,
+  }) async {
+    final url = Uri.parse(
+      '${AppConstants.apiUrl}'
+      '?action=releaseHoldBooking'
+      '&booking_ids=${Uri.encodeComponent(bookingIds.join(","))}'
+      '&trip_type=${Uri.encodeComponent(tripType)}',
+    );
+
+    final response = await http.get(url);
+    final data = jsonDecode(response.body);
+
+    if (data['success'] != true) {
+      throw Exception(data['error'] ?? 'Failed to release hold booking');
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
 }

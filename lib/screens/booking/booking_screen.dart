@@ -311,6 +311,11 @@ class _BookingScreenState extends State<BookingScreen> {
                   amount: currentSummary.onlineAmount,
                 );
 
+                await paymentService.saveRazorpayOrderIdForBooking(
+                  bookingIds: bookingIds,
+                  razorpayOrderId: '${order['id'] ?? ''}',
+                );
+
                 if (!mounted) return;
 
                 final options = {
@@ -331,6 +336,19 @@ class _BookingScreenState extends State<BookingScreen> {
                 };
 
                 if (!isRazorpayReady) {
+                  try {
+                    await paymentService.releaseHoldBooking(
+                      bookingIds: bookingIds,
+                      tripType: currentSummary.booking.tripType,
+                    );
+                  } catch (error) {
+                    debugPrint('Release hold failed: $error');
+                  }
+
+                  pendingBookingIds = [];
+                  pendingSummary = null;
+                  pendingUser = null;
+
                   setState(() => isPreparingPayment = false);
                   showMessage(
                     'Payment gateway is unavailable right now. Please try again later.',
@@ -349,6 +367,19 @@ class _BookingScreenState extends State<BookingScreen> {
                 try {
                   razorpay.open(options);
                 } catch (_) {
+                  try {
+                    await paymentService.releaseHoldBooking(
+                      bookingIds: bookingIds,
+                      tripType: currentSummary.booking.tripType,
+                    );
+                  } catch (error) {
+                    debugPrint('Release hold failed: $error');
+                  }
+
+                  pendingBookingIds = [];
+                  pendingSummary = null;
+                  pendingUser = null;
+
                   showMessage(
                     'Unable to start payment right now. Please try again.',
                   );
@@ -765,10 +796,25 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
-  void handlePaymentError(
+  Future<void> handlePaymentError(
     PaymentFailureResponse response,
-  ) {
+  ) async {
     setState(() => isPreparingPayment = false);
+
+    if (pendingBookingIds.isNotEmpty && pendingSummary != null) {
+      try {
+        await paymentService.releaseHoldBooking(
+          bookingIds: pendingBookingIds,
+          tripType: pendingSummary!.booking.tripType,
+        );
+      } catch (error) {
+        debugPrint('Release hold failed: $error');
+      }
+    }
+
+    pendingBookingIds = [];
+    pendingSummary = null;
+    pendingUser = null;
 
     showMessage(
       response.message ?? 'Payment failed or cancelled',
