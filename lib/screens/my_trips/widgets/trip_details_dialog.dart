@@ -93,7 +93,7 @@ class TripDetailsDialog extends StatelessWidget {
                   Expanded(
                     child: _actionButton(
                       text: _cancelButtonText(),
-                      color: Colors.red.shade300,
+                      color: const Color(0xffDC2626),
                       textColor: Colors.white,
                       onTap: _canCancel()
                         ? () {

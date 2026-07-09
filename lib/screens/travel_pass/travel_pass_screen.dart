@@ -46,6 +46,8 @@ class _TravelPassScreenState extends State<TravelPassScreen> {
   bool isLoading = true;
   bool isProcessing = false;
 
+  String processingMessage = 'Please wait...';
+
   String currentTab = 'available';
 
   String userEmail = '';
@@ -232,11 +234,18 @@ class _TravelPassScreenState extends State<TravelPassScreen> {
     }
 
     try {
-      setState(() => isProcessing = true);
+      setState(() {
+        isProcessing = true;
+        processingMessage = 'Preparing pass payment...';
+      });
 
       final passTypeId = '${pass['pass_type_id']}';
 
       if (walletUsed > 0 && onlineAmount == 0) {
+        setState(() {
+          processingMessage = 'Confirming wallet pass purchase...';
+        });
+
         final result = await travelPassService.processWalletPassPayment(
           userEmail: userEmail,
           passTypeId: passTypeId,
@@ -249,6 +258,10 @@ class _TravelPassScreenState extends State<TravelPassScreen> {
 
         return;
       }
+
+      setState(() {
+        processingMessage = 'Creating secure payment order...';
+      });
 
       final orderAmount = walletUsed > 0 && onlineAmount > 0
           ? onlineAmount
@@ -286,12 +299,26 @@ class _TravelPassScreenState extends State<TravelPassScreen> {
         },
       };
 
+      setState(() {
+        processingMessage = 'Opening Razorpay...';
+      });
+
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      setState(() => isProcessing = false);
+
       razorpay.open(options);
     } catch (error) {
       if (!mounted) return;
 
       setState(() => isProcessing = false);
-      Navigator.pop(context);
+
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
       showMessage(error.toString());
     }
   }
@@ -308,6 +335,13 @@ class _TravelPassScreenState extends State<TravelPassScreen> {
     }
 
     try {
+      setState(() {
+        isProcessing = true;
+        processingMessage = walletUsed > 0 && onlineAmount > 0
+            ? 'Verifying wallet + online payment...'
+            : 'Verifying pass payment...';
+      });
+
       final passTypeId = '${pass['pass_type_id']}';
 
       Map<String, dynamic> result;
@@ -340,6 +374,7 @@ class _TravelPassScreenState extends State<TravelPassScreen> {
       if (!mounted) return;
 
       setState(() => isProcessing = false);
+
       showMessage(
         'Payment successful, but pass activation failed. Please contact support.',
       );
@@ -753,6 +788,61 @@ class _TravelPassScreenState extends State<TravelPassScreen> {
     );
   }
 
+  Widget _screenLoader() {
+    return Positioned.fill(
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.42),
+        child: Center(
+          child: Container(
+            width: 270,
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 22,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(
+                  color: Color(0xff6B46C1),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  processingMessage,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xff111827),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Please do not close or touch the screen.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xff6B7280),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void showPassDetailsDialog({
     required Map<String, dynamic> pass,
     required List<Map<String, dynamic>> usageHistoryList,
@@ -1081,39 +1171,47 @@ class _TravelPassScreenState extends State<TravelPassScreen> {
   }
 
   @override
-    Widget build(BuildContext context) {
-    return Container(
-        color: Colors.white,
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: refreshTravelPass,
-                child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 28),
-                child: Column(
-                    children: [
-                    const Text(
-                        'Travel Pass',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                        color: Color(0xff333333),
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        ),
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        AbsorbPointer(
+          absorbing: isProcessing,
+          child: Container(
+            color: Colors.white,
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: refreshTravelPass,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 28),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Travel Pass',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xff333333),
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          _tabs(),
+                          const SizedBox(height: 22),
+                          if (currentTab == 'available') _availablePasses(),
+                          if (currentTab == 'myPasses') _myPasses(),
+                          if (currentTab == 'usage') _usageHistory(),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 18),
-                    _tabs(),
-                    const SizedBox(height: 22),
-                    if (currentTab == 'available') _availablePasses(),
-                    if (currentTab == 'myPasses') _myPasses(),
-                    if (currentTab == 'usage') _usageHistory(),
-                    ],
-                ),
-                ),
-            ),
+                  ),
+          ),
+        ),
+        if (isProcessing) _screenLoader(),
+      ],
     );
-    }
+  }
 
   Widget _tabs() {
     return Row(

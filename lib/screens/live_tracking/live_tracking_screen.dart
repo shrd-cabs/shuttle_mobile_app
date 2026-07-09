@@ -2,13 +2,6 @@
 // live_tracking_screen.dart
 // ---------------------------------------------------------------
 // Live Tracking Screen
-//
-// PURPOSE
-// ---------------------------------------------------------------
-// Shows customer-side live tracking tab.
-// Fetches today's trips using getMyTrips.
-// Opens tracking popup using getLiveTrackingDetails.
-// Auto-refreshes selected tracking every 30 seconds.
 // ===============================================================
 
 import 'dart:async';
@@ -32,11 +25,15 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   final liveTrackingService = LiveTrackingService();
   final storageService = StorageService();
 
-  static const Duration refreshDuration = Duration(seconds: 30);
+  static const Duration refreshDuration = Duration(seconds: 25);
+
+  final ValueNotifier<LiveTrackingModel?> trackingNotifier =
+      ValueNotifier<LiveTrackingModel?>(null);
+
+  final ValueNotifier<bool> refreshingNotifier = ValueNotifier<bool>(false);
 
   bool isLoading = true;
   bool isTrackingLoading = false;
-  bool isTrackingRefreshing = false;
 
   String userEmail = '';
   String selectedTrackingBookingId = '';
@@ -44,7 +41,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   Timer? liveTrackingRefreshTimer;
 
   List<Map<String, dynamic>> liveTrips = [];
-  LiveTrackingModel? selectedTracking;
 
   @override
   void initState() {
@@ -55,6 +51,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   @override
   void dispose() {
     stopLiveTrackingAutoRefresh();
+    trackingNotifier.dispose();
+    refreshingNotifier.dispose();
     super.dispose();
   }
 
@@ -89,15 +87,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-
       setState(() => isLoading = false);
       showMessage(error.toString());
     }
   }
 
-  Future<void> loadLiveTrackingDetails(
-    String bookingId,
-  ) async {
+  Future<void> loadLiveTrackingDetails(String bookingId) async {
     if (bookingId.isEmpty) {
       showMessage('Booking ID missing');
       return;
@@ -122,7 +117,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
       if (!mounted) return;
 
-      selectedTracking = tracking;
+      trackingNotifier.value = tracking;
 
       Navigator.pop(context);
 
@@ -155,32 +150,19 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     }
 
     try {
-      if (manual && mounted) {
-        setState(() => isTrackingRefreshing = true);
-      }
+      refreshingNotifier.value = true;
 
       final tracking = await liveTrackingService.getLiveTrackingDetails(
         bookingId: selectedTrackingBookingId,
         email: userEmail,
       );
 
-      if (!mounted) return;
-
-      setState(() {
-        selectedTracking = tracking;
-        isTrackingRefreshing = false;
-      });
-
-      if (manual) {
-        Navigator.pop(context);
-        openTrackingDialog();
-      }
+      trackingNotifier.value = tracking;
+      refreshingNotifier.value = false;
     } catch (error) {
-      if (!mounted) return;
+      refreshingNotifier.value = false;
 
-      setState(() => isTrackingRefreshing = false);
-
-      if (manual) {
+      if (manual && mounted) {
         showMessage(error.toString());
       }
     }
@@ -215,38 +197,33 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   void openTrackingDialog() {
-    final tracking = selectedTracking;
-
-    if (tracking == null) {
-      showMessage('Unable to load tracking');
-      return;
-    }
-
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (_) {
-        return StatefulBuilder(
-          builder: (context, dialogSetState) {
-            return TrackingDialog(
-              tracking: selectedTracking ?? tracking,
-              isRefreshing: isTrackingRefreshing,
-              onRefresh: () async {
-                dialogSetState(() {
-                  isTrackingRefreshing = true;
-                });
+        return ValueListenableBuilder<LiveTrackingModel?>(
+          valueListenable: trackingNotifier,
+          builder: (context, tracking, _) {
+            if (tracking == null) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
 
-                await refreshSelectedTracking();
-
-                if (!mounted) return;
-
-                dialogSetState(() {
-                  isTrackingRefreshing = false;
-                });
-              },
-              onClose: () {
-                stopLiveTrackingAutoRefresh();
-                Navigator.pop(context);
+            return ValueListenableBuilder<bool>(
+              valueListenable: refreshingNotifier,
+              builder: (context, isRefreshing, _) {
+                return TrackingDialog(
+                  tracking: tracking,
+                  isRefreshing: isRefreshing,
+                  onRefresh: () async {
+                    await refreshSelectedTracking(manual: true);
+                  },
+                  onClose: () {
+                    stopLiveTrackingAutoRefresh();
+                    Navigator.pop(context);
+                  },
+                );
               },
             );
           },
@@ -257,9 +234,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     });
   }
 
-  void showMessage(
-    String message,
-  ) {
+  void showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message.replaceFirst('Exception: ', '')),
@@ -346,20 +321,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 42, horizontal: 18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xffE5E7EB),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+      decoration: _cardDecoration(),
       child: const Column(
         children: [
           CircularProgressIndicator(),
@@ -380,26 +342,10 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 42, horizontal: 22),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: const Color(0xffE5E7EB),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+      decoration: _cardDecoration(),
       child: const Column(
         children: [
-          Text(
-            '🚌',
-            style: TextStyle(fontSize: 54),
-          ),
+          Text('🚌', style: TextStyle(fontSize: 54)),
           SizedBox(height: 14),
           Text(
             'No active trip for live tracking',
@@ -430,13 +376,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xffE5E7EB),
-        ),
-      ),
+      decoration: _cardDecoration(),
       child: Row(
         children: [
           const Expanded(
@@ -480,6 +420,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: const Color(0xffE5E7EB)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 18,
+          offset: const Offset(0, 8),
+        ),
+      ],
     );
   }
 }

@@ -39,6 +39,8 @@ class _WalletDialogState extends State<WalletDialog> {
   bool isLoading = true;
   bool isProcessing = false;
 
+  String processingMessage = 'Please wait...';
+
   double walletBalance = 0;
   double pendingAmount = 0;
 
@@ -118,7 +120,7 @@ class _WalletDialogState extends State<WalletDialog> {
       if (!mounted) return;
 
       setState(() => isLoading = false);
-      showMessage(error.toString());
+      showMessage(error.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -138,12 +140,15 @@ class _WalletDialogState extends State<WalletDialog> {
     try {
       setState(() {
         isProcessing = true;
+        processingMessage = 'Creating secure wallet order...';
         pendingAmount = amount;
       });
 
       final order = await walletService.createWalletOrder(
         amount: amount,
       );
+
+      if (!mounted) return;
 
       final options = {
         'key': AppConstants.razorpayKeyId,
@@ -166,12 +171,28 @@ class _WalletDialogState extends State<WalletDialog> {
         },
       };
 
-      razorpay.open(options);
+      setState(() {
+        processingMessage = 'Opening Razorpay...';
+      });
+
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      setState(() => isProcessing = false);
+
+      try {
+        razorpay.open(options);
+      } catch (_) {
+        showMessage(
+          'Unable to start payment right now. Please try again.',
+        );
+      }
     } catch (error) {
       if (!mounted) return;
 
       setState(() => isProcessing = false);
-      showMessage(error.toString());
+      showMessage(error.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -179,6 +200,11 @@ class _WalletDialogState extends State<WalletDialog> {
     PaymentSuccessResponse response,
   ) async {
     try {
+      setState(() {
+        isProcessing = true;
+        processingMessage = 'Verifying wallet payment...';
+      });
+
       await walletService.verifyWalletPayment(
         email: email,
         amount: pendingAmount,
@@ -188,6 +214,10 @@ class _WalletDialogState extends State<WalletDialog> {
       );
 
       amountController.clear();
+
+      setState(() {
+        processingMessage = 'Refreshing wallet balance...';
+      });
 
       await loadWallet();
 
@@ -200,7 +230,7 @@ class _WalletDialogState extends State<WalletDialog> {
       );
 
       pendingAmount = 0;
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
 
       setState(() => isProcessing = false);
@@ -236,39 +266,102 @@ class _WalletDialogState extends State<WalletDialog> {
   void showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(message.replaceFirst('Exception: ', '')),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 650),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(22),
-          child: isLoading
-              ? const SizedBox(
-                  height: 280,
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _header(context),
-                    const SizedBox(height: 18),
-                    _balanceCard(),
-                    const SizedBox(height: 22),
-                    _addMoneySection(),
-                    const SizedBox(height: 24),
-                    _transactionsSection(),
-                  ],
+    return Stack(
+      children: [
+        AbsorbPointer(
+          absorbing: isProcessing,
+          child: Dialog(
+            insetPadding: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 650),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(22),
+                child: isLoading
+                    ? const SizedBox(
+                        height: 280,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _header(context),
+                          const SizedBox(height: 18),
+                          _balanceCard(),
+                          const SizedBox(height: 22),
+                          _addMoneySection(),
+                          const SizedBox(height: 24),
+                          _transactionsSection(),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ),
+        if (isProcessing) _screenLoader(),
+      ],
+    );
+  }
+
+  Widget _screenLoader() {
+    return Positioned.fill(
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.42),
+        child: Center(
+          child: Container(
+            width: 270,
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 22,
+                  offset: const Offset(0, 8),
                 ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(
+                  color: Color(0xff6B46C1),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  processingMessage,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xff111827),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Please do not close or touch the screen.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xff6B7280),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
