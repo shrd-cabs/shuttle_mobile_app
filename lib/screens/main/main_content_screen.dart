@@ -145,12 +145,27 @@ class _MainContentScreenState extends State<MainContentScreen> {
       color: const Color(0xff6B46C1),
       child: Column(
         children: [
-          Image.asset(
-            'assets/images/logo.jpeg',
-            width: 70,
-            height: 70,
+          Container(
+            width: 80,
+            height: 80,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xffC8B6FF),
+                width: 4,
+              ),
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/logo_header.jpeg',
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
+
           const SizedBox(height: 10),
+
           const Text(
             'SHRD Shuttle Booking',
             style: TextStyle(
@@ -159,19 +174,29 @@ class _MainContentScreenState extends State<MainContentScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
+
           const Text(
             'Shri Radhey Travel Services',
-            style: TextStyle(color: Colors.white, fontSize: 14),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+            ),
           ),
+
           const SizedBox(height: 14),
+
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               GestureDetector(
                 onTap: openWallet,
-                child: _chip('💰 ₹${walletBalance.toStringAsFixed(0)}'),
+                child: _chip(
+                  '💰 ₹${walletBalance.toStringAsFixed(0)}',
+                ),
               ),
+
               const SizedBox(width: 12),
+
               GestureDetector(
                 onTap: logout,
                 child: _chip('Logout'),

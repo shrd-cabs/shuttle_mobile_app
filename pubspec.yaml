@@ -44,10 +44,8 @@ dependencies:
   # Local Storage
   shared_preferences: ^2.5.3
 
+  # Razorpay Payment Gateway
   razorpay_flutter: 1.4.1
-
-#dependency_overrides:
-#  fluttertoast: 8.2.12
 
 # ===============================================================
 # Development Dependencies
@@ -80,10 +78,11 @@ flutter:
 # ===============================================================
 # Application Icon Configuration
 # ---------------------------------------------------------------
-# Generates Android and iOS application icons
+# Standard icon:
+# assets/images/logo.png
 #
-# REQUIRED FILE:
-# assets/images/logo.jpeg
+# Android adaptive foreground:
+# assets/icons/shrd_icon_foreground.png
 # ===============================================================
 
 flutter_launcher_icons:
@@ -92,6 +91,16 @@ flutter_launcher_icons:
 
   ios: true
 
-  image_path: "assets/images/logo.jpeg"
+  # Standard icon and fallback for older Android versions
+  image_path: "assets/images/logo.png"
 
+  # Android adaptive icon layers
+  adaptive_icon_background: "#FFFFFF"
+
+  adaptive_icon_foreground: "assets/icons/shrd_icon_foreground.png"
+
+  # Adds safe padding around foreground artwork
+  adaptive_icon_foreground_inset: 0
+
+  # Removes transparency from generated iOS icons
   remove_alpha_ios: true

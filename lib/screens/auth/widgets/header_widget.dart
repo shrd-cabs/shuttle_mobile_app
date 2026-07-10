@@ -45,7 +45,7 @@ class HeaderWidget extends StatelessWidget {
             ),
             child: ClipOval(
               child: Image.asset(
-                'assets/images/logo.jpeg',
+                'assets/images/logo_header.jpeg',
                 fit: BoxFit.cover,
               ),
             ),
