@@ -46,6 +46,9 @@ dependencies:
 
   # Razorpay Payment Gateway
   razorpay_flutter: 1.4.1
+  device_info_plus: ^13.2.0
+  connectivity_plus: ^7.2.0
+  package_info_plus: ^10.2.0
 
 # ===============================================================
 # Development Dependencies

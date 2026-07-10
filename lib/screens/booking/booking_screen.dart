@@ -21,6 +21,8 @@ import '../../services/payment_service.dart';
 import '../../services/route_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/stops_service.dart';
+import 'route_details_sheet.dart';
+import '../../services/availability_log_service.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -34,7 +36,7 @@ class _BookingScreenState extends State<BookingScreen> {
   final routeService = RouteService();
   final paymentService = PaymentService();
   final storageService = StorageService();
-
+  final availabilityLogService = AvailabilityLogService();
   late Razorpay razorpay;
 
   List<String> pendingBookingIds = [];
@@ -123,6 +125,54 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
+  // ===============================================================
+  // LOG AVAILABILITY SEARCH
+  // ---------------------------------------------------------------
+  // Runs independently from route search.
+  //
+  // Logging failure must never interrupt the booking experience.
+  // ===============================================================
+  Future<void> logAvailabilitySearch() async {
+    try {
+      final user =
+          await storageService.getCurrentUser();
+
+      if (!mounted) return;
+
+      await availabilityLogService
+          .logAvailabilitySearch(
+        context: context,
+        request: AvailabilityLogRequest(
+          tripType:
+              tripType == 'roundtrip'
+                  ? 'ROUNDTRIP'
+                  : 'ONEWAY',
+
+          travelDate: apiDate,
+
+          fromStop:
+              fromStop?.stopName ?? '',
+
+          toStop:
+              toStop?.stopName ?? '',
+
+          seatsRequired:
+              passengers,
+
+          userEmail:
+              '${user?['email'] ?? 'GUEST'}',
+
+          userName:
+              '${user?['name'] ?? 'Guest User'}',
+        ),
+      );
+    } catch (error) {
+      debugPrint(
+        '⚠️ Availability log helper failed: $error',
+      );
+    }
+  }
+
   Future<void> checkAvailability() async {
     if (fromStop == null || toStop == null) {
       showMessage('Please select From and To stops');
@@ -133,6 +183,10 @@ class _BookingScreenState extends State<BookingScreen> {
       showMessage('From and To stops cannot be same');
       return;
     }
+
+    // Analytics only.
+    // Do not await because logging must not delay route search.
+    logAvailabilitySearch();
 
     setState(() {
       isSearching = true;
@@ -1135,116 +1189,864 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
+  // ===============================================================
+  // OPEN ROUTE DETAILS
+  // ---------------------------------------------------------------
+  // Opens the professional Route & Stops bottom sheet.
+  //
+  // Direction handling:
+  // - One-way: From → To
+  // - Onward: From → To
+  // - Return: To → From
+  //
+  // This does not select the route or modify booking state.
+  // ===============================================================
+  Future<void> openRouteDetailsForRoute({
+    required RouteModel route,
+    required bool isReturnRoute,
+  }) async {
+    final originalFromStop = fromStop;
+    final originalToStop = toStop;
+
+    if (originalFromStop == null || originalToStop == null) {
+      showMessage(
+        'Please select pickup and drop stops again',
+      );
+
+      return;
+    }
+
+    final detailsFromStop = isReturnRoute
+        ? originalToStop
+        : originalFromStop;
+
+    final detailsToStop = isReturnRoute
+        ? originalFromStop
+        : originalToStop;
+
+    await showRouteDetailsSheet(
+      context: context,
+      route: route,
+      fromStop: detailsFromStop,
+      toStop: detailsToStop,
+    );
+  }
+
+  // ===============================================================
+  // ROUTES SECTION
+  // ---------------------------------------------------------------
+  // Displays:
+  //
+  // One-way:
+  // - One professional route group
+  //
+  // Round-trip:
+  // - Separate onward and return route groups
+  // - Correct direction text
+  // - Light background containers
+  // ===============================================================
   Widget _routesSection() {
     if (tripType == 'roundtrip') {
+      if (
+          onwardRoutes.isEmpty &&
+          returnRoutes.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
       return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           if (onwardRoutes.isNotEmpty)
-            _routeList('Onward Route', onwardRoutes, true),
+            _routeList(
+              sectionType: 'onward',
+              sectionLabel: 'ONWARD JOURNEY',
+              title: 'Select your onward route',
+              direction:
+                  '${fromStop?.stopName ?? '-'} → '
+                  '${toStop?.stopName ?? '-'}',
+              routesList: onwardRoutes,
+              backgroundColor:
+                  const Color(0xffFAF8FF),
+              borderColor:
+                  const Color(0xffE8E1FA),
+            ),
+
+          if (
+              onwardRoutes.isNotEmpty &&
+              returnRoutes.isNotEmpty)
+            const SizedBox(height: 20),
+
           if (returnRoutes.isNotEmpty)
-            _routeList('Return Route', returnRoutes, false),
+            _routeList(
+              sectionType: 'return',
+              sectionLabel: 'RETURN JOURNEY',
+              title: 'Select your return route',
+              direction:
+                  '${toStop?.stopName ?? '-'} → '
+                  '${fromStop?.stopName ?? '-'}',
+              routesList: returnRoutes,
+              backgroundColor:
+                  const Color(0xffF7FAFD),
+              borderColor:
+                  const Color(0xffE2E8F0),
+            ),
         ],
       );
     }
 
-    if (routes.isEmpty) return const SizedBox();
+    if (routes.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
-    return _routeList('Select Available Route', routes, true);
-  }
-
-  Widget _routeList(
-    String title,
-    List<RouteModel> list,
-    bool isOnwardOrOneWay,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...list.map(
-          (route) {
-            final selected = tripType == 'oneway'
-                ? selectedRoute?.routeId == route.routeId
-                : isOnwardOrOneWay
-                    ? selectedOnwardRoute?.routeId == route.routeId
-                    : selectedReturnRoute?.routeId == route.routeId;
-
-            return _routeCard(
-              route,
-              selected,
-              () {
-                if (tripType == 'oneway') {
-                  selectOneWayRoute(route);
-                } else if (isOnwardOrOneWay) {
-                  selectOnwardRoute(route);
-                } else {
-                  selectReturnRoute(route);
-                }
-              },
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-      ],
+    return _routeList(
+      sectionType: 'oneway',
+      sectionLabel: 'ONE-WAY JOURNEY',
+      title: 'Select your available route',
+      direction:
+          '${fromStop?.stopName ?? '-'} → '
+          '${toStop?.stopName ?? '-'}',
+      routesList: routes,
+      backgroundColor:
+          const Color(0xffFAF8FF),
+      borderColor:
+          const Color(0xffE8E1FA),
     );
   }
 
-  Widget _routeCard(
-    RouteModel route,
-    bool selected,
-    VoidCallback onTap,
-  ) {
+  // ===============================================================
+  // ROUTE LIST
+  // ---------------------------------------------------------------
+  // Builds one route group for:
+  //
+  // - One-way journey
+  // - Onward journey
+  // - Return journey
+  //
+  // RESPONSIBILITIES
+  // ---------------------------------------------------------------
+  // - Displays the styled section heading
+  // - Displays the journey direction
+  // - Determines which route is selected
+  // - Opens Route & Stops
+  // - Selects the appropriate route
+  // ===============================================================
+  Widget _routeList({
+    required String sectionType,
+    required String sectionLabel,
+    required String title,
+    required String direction,
+    required List<RouteModel> routesList,
+    required Color backgroundColor,
+    required Color borderColor,
+  }) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: selected ? const Color(0xffF3EDFF) : Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: selected ? const Color(0xff6B46C1) : Colors.grey.shade300,
-          width: selected ? 2 : 1,
+          color: borderColor,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: 0.035,
+            ),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            route.routeName,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+          // =======================================================
+          // ROUTE GROUP HEADING
+          // =======================================================
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              2,
+              2,
+              2,
+              15,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  sectionLabel,
+                  style: const TextStyle(
+                    color: Color(0xff6B46C1),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.75,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xff1F2937),
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+
+                // Journey direction.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.route_outlined,
+                      size: 16,
+                      color: Color(0xff6B46C1),
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        direction,
+                        style: const TextStyle(
+                          color: Color(0xff64748B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
-          Text('Journey: ${route.arrivalTime} → ${route.reachingTime}'),
-          Text('Available Seats: ${route.availableSeats}'),
-          Text('Fare per Seat: ${formatAmount(route.farePerSeat)}'),
-          Text('Total: ${formatAmount(route.totalAmount)}'),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 42,
-            child: ElevatedButton(
-              onPressed: onTap,
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    selected ? Colors.green : const Color(0xff6B46C1),
-                foregroundColor: Colors.white,
+
+          // =======================================================
+          // AVAILABLE ROUTE CARDS
+          // =======================================================
+          ...routesList.map(
+            (route) {
+              final bool selected;
+
+              if (sectionType == 'oneway') {
+                selected =
+                    selectedRoute?.routeId ==
+                    route.routeId;
+              } else if (sectionType == 'onward') {
+                selected =
+                    selectedOnwardRoute?.routeId ==
+                    route.routeId;
+              } else {
+                selected =
+                    selectedReturnRoute?.routeId ==
+                    route.routeId;
+              }
+
+              String selectButtonText;
+
+              if (sectionType == 'onward') {
+                selectButtonText = 'Select Onward';
+              } else if (sectionType == 'return') {
+                selectButtonText = 'Select Return';
+              } else {
+                selectButtonText = 'Select Route';
+              }
+
+              return _routeCard(
+                route: route,
+                selected: selected,
+                selectButtonText: selectButtonText,
+
+                // Route & Stops does not select the route.
+                onViewDetails: () {
+                  openRouteDetailsForRoute(
+                    route: route,
+                    isReturnRoute:
+                        sectionType == 'return',
+                  );
+                },
+
+                // Select the correct leg.
+                onSelect: () {
+                  if (sectionType == 'oneway') {
+                    selectOneWayRoute(route);
+                  } else if (sectionType == 'onward') {
+                    selectOnwardRoute(route);
+                  } else {
+                    selectReturnRoute(route);
+                  }
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===============================================================
+  // ROUTE CARD
+  // ---------------------------------------------------------------
+  // Matches the web application route-card design:
+  //
+  // - Route name
+  // - Bus number chip
+  // - Pickup ─── Bus ─── Drop-off
+  // - Available seats
+  // - Fare per seat
+  // - Total amount
+  // - Route & Stops button
+  // - Select Route button
+  // - Selected state
+  // ===============================================================
+  Widget _routeCard({
+    required RouteModel route,
+    required bool selected,
+    required String selectButtonText,
+    required VoidCallback onViewDetails,
+    required VoidCallback onSelect,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(
+        bottom: 14,
+      ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: selected
+            ? const Color(0xffFAF8FF)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(
+          15,
+        ),
+        border: Border.all(
+          color: selected
+              ? const Color(0xff6B46C1)
+              : const Color(0xffE4E4E7),
+          width: selected ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: selected
+                ? const Color(0xff6B46C1)
+                    .withValues(alpha: 0.14)
+                : Colors.black.withValues(
+                    alpha: 0.045,
+                  ),
+            blurRadius: selected ? 18 : 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          // =======================================================
+          // ROUTE HEADER
+          // =======================================================
+          Row(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'AVAILABLE ROUTE',
+                      style: TextStyle(
+                        color: Color(0xff777777),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.65,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      route.routeName,
+                      style: TextStyle(
+                        color: selected
+                            ? const Color(0xff6B46C1)
+                            : const Color(0xff222222),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Text(
-                selected ? 'Selected ✓' : 'Select Route',
+
+              if (
+                  route.busNumber.trim().isNotEmpty &&
+                  route.busNumber.trim() != '-') ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xffF4F1FF),
+                    borderRadius:
+                        BorderRadius.circular(99),
+                    border: Border.all(
+                      color:
+                          const Color(0xffE4DCFF),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize:
+                        MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons
+                            .directions_bus_rounded,
+                        size: 14,
+                        color:
+                            Color(0xff6B46C1),
+                      ),
+                      const SizedBox(width: 5),
+                      ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(
+                          maxWidth: 110,
+                        ),
+                        child: Text(
+                          route.busNumber,
+                          overflow:
+                              TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color:
+                                Color(0xff6B46C1),
+                            fontSize: 11,
+                            fontWeight:
+                                FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // =======================================================
+          // JOURNEY TIME
+          // =======================================================
+          Row(
+            crossAxisAlignment:
+                CrossAxisAlignment.center,
+            children: [
+              _routeTimeBlock(
+                label: 'PICKUP',
+                time: route.arrivalTime,
+                alignRight: false,
               ),
+
+              const SizedBox(width: 9),
+
+              Expanded(
+                child: _routeBusConnector(
+                  selected: selected,
+                ),
+              ),
+
+              const SizedBox(width: 9),
+
+              _routeTimeBlock(
+                label: 'DROP-OFF',
+                time: route.reachingTime,
+                alignRight: true,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // =======================================================
+          // ROUTE INFORMATION
+          // =======================================================
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final useSingleColumn =
+                  constraints.maxWidth < 290;
+
+              final cards = [
+                _routeInfoCard(
+                  label: 'Available Seats',
+                  value:
+                      '${route.availableSeats}',
+                  icon: Icons
+                      .event_seat_outlined,
+                ),
+                _routeInfoCard(
+                  label: 'Fare per Seat',
+                  value: formatAmount(
+                    route.farePerSeat,
+                  ),
+                  icon: Icons
+                      .currency_rupee_rounded,
+                ),
+                _routeInfoCard(
+                  label: 'Total Amount',
+                  value: formatAmount(
+                    route.totalAmount,
+                  ),
+                  icon:
+                      Icons.receipt_long_outlined,
+                ),
+              ];
+
+              if (useSingleColumn) {
+                return Column(
+                  children: [
+                    for (
+                      int index = 0;
+                      index < cards.length;
+                      index++
+                    ) ...[
+                      cards[index],
+                      if (
+                          index !=
+                          cards.length - 1)
+                        const SizedBox(height: 8),
+                    ],
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  for (
+                    int index = 0;
+                    index < cards.length;
+                    index++
+                  ) ...[
+                    Expanded(
+                      child: cards[index],
+                    ),
+                    if (
+                        index !=
+                        cards.length - 1)
+                      const SizedBox(width: 8),
+                  ],
+                ],
+              );
+            },
+          ),
+
+          const SizedBox(height: 16),
+
+          // =======================================================
+          // ACTION BUTTONS
+          // =======================================================
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stackButtons =
+                  constraints.maxWidth < 315;
+
+              final routeDetailsButton =
+                  SizedBox(
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: onViewDetails,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor:
+                        const Color(0xff6B46C1),
+                    side: const BorderSide(
+                      color:
+                          Color(0xff6B46C1),
+                      width: 1.6,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(10),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.alt_route_rounded,
+                    size: 18,
+                  ),
+                  label: const Text(
+                    'Route & Stops',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight:
+                          FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              );
+
+              final selectButton =
+                  SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: onSelect,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: selected
+                        ? const Color(0xff16A34A)
+                        : const Color(0xff6B46C1),
+                    foregroundColor:
+                        Colors.white,
+                    elevation: selected ? 2 : 4,
+                    shadowColor:
+                        const Color(0xff6B46C1)
+                            .withValues(
+                      alpha: 0.25,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Text(
+                    selected
+                        ? 'Selected ✓'
+                        : selectButtonText,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight:
+                          FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              );
+
+              if (stackButtons) {
+                return Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child:
+                          routeDetailsButton,
+                    ),
+                    const SizedBox(height: 9),
+                    SizedBox(
+                      width: double.infinity,
+                      child: selectButton,
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(
+                    child:
+                        routeDetailsButton,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: selectButton,
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===============================================================
+  // ROUTE TIME BLOCK
+  // ===============================================================
+  Widget _routeTimeBlock({
+    required String label,
+    required String time,
+    required bool alignRight,
+  }) {
+    return Column(
+      crossAxisAlignment: alignRight
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xff777777),
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          formatRouteCardTime(time),
+          textAlign: alignRight
+              ? TextAlign.right
+              : TextAlign.left,
+          style: const TextStyle(
+            color: Color(0xff222222),
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  // ===============================================================
+  // ROUTE BUS CONNECTOR
+  // ===============================================================
+  Widget _routeBusConnector({
+    required bool selected,
+  }) {
+    final lineColor = selected
+        ? const Color(0xff6B46C1)
+        : const Color(0xffC4B5FD);
+
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 2,
+            decoration: BoxDecoration(
+              color: lineColor,
+              borderRadius:
+                  BorderRadius.circular(99),
+            ),
+          ),
+        ),
+        Container(
+          width: 32,
+          height: 32,
+          margin:
+              const EdgeInsets.symmetric(
+            horizontal: 6,
+          ),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? const Color(0xff6B46C1)
+                : const Color(0xffF4F1FF),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected
+                  ? const Color(0xff6B46C1)
+                  : const Color(0xffE4DCFF),
+            ),
+          ),
+          child: Icon(
+            Icons.directions_bus_rounded,
+            size: 16,
+            color: selected
+                ? Colors.white
+                : const Color(0xff6B46C1),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            height: 2,
+            decoration: BoxDecoration(
+              color: lineColor,
+              borderRadius:
+                  BorderRadius.circular(99),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  // ===============================================================
+  // ROUTE INFORMATION CARD
+  // ===============================================================
+  Widget _routeInfoCard({
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xffFAFAFA),
+        borderRadius: BorderRadius.circular(
+          10,
+        ),
+        border: Border.all(
+          color: const Color(0xffEEEEEE),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: const Color(0xff6B46C1),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            label,
+            maxLines: 2,
+            style: const TextStyle(
+              color: Color(0xff777777),
+              fontSize: 9,
+              height: 1.25,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xff222222),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
       ),
     );
+  }
+
+  // ===============================================================
+  // FORMAT ROUTE CARD TIME
+  // ===============================================================
+  String formatRouteCardTime(
+    String value,
+  ) {
+    final text = value.trim();
+
+    if (text.isEmpty || text == '-') {
+      return '--:--';
+    }
+
+    final match = RegExp(
+      r'(\d{1,2}):(\d{2})',
+    ).firstMatch(text);
+
+    if (match == null) {
+      return text;
+    }
+
+    final hour =
+        match.group(1)!.padLeft(2, '0');
+
+    final minute =
+        match.group(2)!;
+
+    return '$hour:$minute';
   }
 
   Widget _stopDropdown({
