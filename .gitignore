@@ -93,3 +93,8 @@ android/key.properties
 # ---------------------------------------------------------------
 firebase-debug.log
 firebase-debug.*.log
+
+# Android release signing
+android/key.properties
+*.jks
+*.keystore
