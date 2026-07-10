@@ -1,11 +1,10 @@
 plugins {
     id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace = "com.example.shuttle_mobile_app"
+    namespace = "com.shrdcabs.app"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -15,22 +14,23 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.shuttle_mobile_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        applicationId = "com.shrdcabs.app"
+
         minSdk = flutter.minSdkVersion
-        targetSdk = 34
+        targetSdk = 35
+
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // Disable shrinking/minification for now to avoid release-only crashes
-            // with third-party plugins such as Razorpay on some devices.
+            // Keep minification disabled for the first release.
             isMinifyEnabled = false
             isShrinkResources = false
+
+            // Temporary only. We will replace this with the production
+            // upload keystore before generating the Play Store bundle.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -38,7 +38,8 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        jvmTarget =
+            org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

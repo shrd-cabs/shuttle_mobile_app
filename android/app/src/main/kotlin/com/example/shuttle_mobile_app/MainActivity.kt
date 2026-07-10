@@ -1,4 +1,4 @@
-package com.example.shuttle_mobile_app
+package com.shrdcabs.app
 
 import io.flutter.embedding.android.FlutterActivity
 

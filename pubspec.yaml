@@ -18,7 +18,7 @@ description: SHRD Shuttle Booking Mobile Application
 
 publish_to: 'none'
 
-version: 1.0.1+2
+version: 1.0.1
 
 # ===============================================================
 # Dart SDK Version
