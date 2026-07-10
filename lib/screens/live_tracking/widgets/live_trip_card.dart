@@ -11,8 +11,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../../../models/live_tracking_model.dart';
-
 class LiveTripCard extends StatelessWidget {
   final Map<String, dynamic> trip;
   final String liveState;

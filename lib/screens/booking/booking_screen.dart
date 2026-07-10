@@ -303,6 +303,8 @@ class _BookingScreenState extends State<BookingScreen> {
 
               final user = await storageService.getCurrentUser();
 
+              if (!context.mounted) return;
+
               if (user == null) {
                 showMessage('Please login again');
                 return;
@@ -311,9 +313,9 @@ class _BookingScreenState extends State<BookingScreen> {
               setModalState(() => modalProcessing = true);
 
               try {
-                if (!mounted) return;
+                if (!context.mounted || !mounted) return;
 
-                Navigator.pop(context);
+                Navigator.of(context).pop();
 
                 setState(() {
                   isPreparingPayment = true;
@@ -1057,7 +1059,8 @@ class _BookingScreenState extends State<BookingScreen> {
                 const SizedBox(height: 20),
                 _label('Number of Passengers'),
                 DropdownButtonFormField<int>(
-                  value: passengers,
+                  key: ValueKey(passengers),
+                  initialValue: passengers,
                   items: [1, 2, 3, 4]
                       .map(
                         (e) => DropdownMenuItem(
