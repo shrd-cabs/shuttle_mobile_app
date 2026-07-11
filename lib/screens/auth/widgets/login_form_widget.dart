@@ -15,6 +15,10 @@
 // ===============================================================
 
 import 'package:flutter/material.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+
+import '../../../services/fcm_service.dart';
+import '../../../services/notification_service.dart';
 
 import '../../main/main_content_screen.dart';
 import '../../../services/auth_service.dart';
@@ -46,32 +50,89 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
 
     setState(() => isLoading = true);
 
-    final result = await authService.login(
-      email: email,
-      password: password,
-    );
-
-    if (!mounted) return;
-
-    setState(() => isLoading = false);
-
-    if (result['success'] == true && result['user'] != null) {
-      await storageService.saveCurrentUser(
-        Map<String, dynamic>.from(result['user']),
+    try {
+      final result = await authService.login(
+        email: email,
+        password: password,
       );
-
-      showMessage('Welcome ${result['user']['name']}');
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const MainContentScreen(),
-        ),
+      if (result['success'] == true && result['user'] != null) {
+        final user = Map<String, dynamic>.from(
+          result['user'],
+        );
+
+        // Preserve the existing login session behavior.
+        await storageService.saveCurrentUser(user);
+
+        // FCM registration is non-blocking for the login flow.
+        // Any failure here must not stop the user from entering the app.
+        try {
+          final token =
+              await NotificationService.instance.getToken();
+
+          if (token != null && token.trim().isNotEmpty) {
+            final androidInfo =
+                await DeviceInfoPlugin().androidInfo;
+
+            final deviceName = [
+              androidInfo.manufacturer.trim(),
+              androidInfo.model.trim(),
+            ].where((value) => value.isNotEmpty).join(' ');
+
+            await FcmService().registerToken(
+              email: (user['email'] ?? email)
+                  .toString()
+                  .trim(),
+              phone: (user['phone'] ?? '')
+                  .toString()
+                  .trim(),
+              token: token,
+              deviceName: deviceName.isEmpty
+                  ? 'Android Device'
+                  : deviceName,
+            );
+          }
+        } catch (error, stackTrace) {
+          debugPrint(
+            'FCM token registration failed: $error',
+          );
+
+          debugPrintStack(
+            stackTrace: stackTrace,
+          );
+        }
+
+        if (!mounted) return;
+
+        showMessage(
+          'Welcome ${user['name'] ?? ''}',
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                const MainContentScreen(),
+          ),
+        );
+      } else {
+        showMessage(
+          result['error'] ??
+              'Invalid email or password',
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      showMessage(
+        'Unable to login. Please try again.',
       );
-    } else {
-      showMessage(result['error'] ?? 'Invalid email or password');
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 

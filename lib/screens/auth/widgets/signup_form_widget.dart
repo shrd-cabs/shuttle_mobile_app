@@ -28,6 +28,10 @@
 // ===============================================================
 
 import 'package:flutter/material.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+
+import '../../../services/fcm_service.dart';
+import '../../../services/notification_service.dart';
 
 import '../../main/main_content_screen.dart';
 import '../../../services/auth_service.dart';
@@ -138,6 +142,47 @@ class _SignupFormWidgetState extends State<SignupFormWidget> {
         );
 
         await storageService.saveCurrentUser(user);
+
+        // -----------------------------------------------------
+        // Register FCM token
+        //
+        // Notification registration must never block signup.
+        // -----------------------------------------------------
+        try {
+          final token =
+              await NotificationService.instance.getToken();
+
+          if (token != null && token.trim().isNotEmpty) {
+            final androidInfo =
+                await DeviceInfoPlugin().androidInfo;
+
+            final deviceName = [
+              androidInfo.manufacturer.trim(),
+              androidInfo.model.trim(),
+            ].where((value) => value.isNotEmpty).join(' ');
+
+            await FcmService().registerToken(
+              email: (user['email'] ?? email)
+                  .toString()
+                  .trim(),
+              phone: (user['phone'] ?? phone)
+                  .toString()
+                  .trim(),
+              token: token,
+              deviceName: deviceName.isEmpty
+                  ? 'Android Device'
+                  : deviceName,
+            );
+          }
+        } catch (error, stackTrace) {
+          debugPrint(
+            'FCM registration after signup failed: $error',
+          );
+
+          debugPrintStack(
+            stackTrace: stackTrace,
+          );
+        }
 
         if (!mounted) return;
 

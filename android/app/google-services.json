@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "839792500190",
+    "project_id": "shrd-shuttle-android",
+    "storage_bucket": "shrd-shuttle-android.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:839792500190:android:cb0d3660d36d27424fd14f",
+        "android_client_info": {
+          "package_name": "com.shrdcabs.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCiiGz3C4tOdUrpNz6ujMhaG6gu1IvwgCw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
