@@ -98,3 +98,5 @@ firebase-debug.*.log
 android/key.properties
 *.jks
 *.keystore
+
+shrd-shuttle-android-firebase-adminsdk-*.json
